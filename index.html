@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="No Spend">
+<title>No Spend Tracker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    background: #0a0a0a;
+    color: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 24px 40px;
+    user-select: none;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 48px;
+  }
+
+  .date-picker {
+    margin-bottom: 32px;
+    text-align: center;
+  }
+
+  .date-picker label {
+    font-size: 13px;
+    color: #888;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .date-picker input[type="date"] {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #f5f5f5;
+    font-size: 18px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-family: inherit;
+    -webkit-appearance: none;
+  }
+
+  .status-badge {
+    font-size: 14px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    margin-bottom: 40px;
+    font-weight: 500;
+  }
+
+  .status-badge.none { background: #1a1a1a; color: #666; }
+  .status-badge.no-spend { background: #0a2e1a; color: #34d399; }
+  .status-badge.spent { background: #2e0a0a; color: #f87171; }
+
+  .streak-display {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .streak-number {
+    font-size: 80px;
+    font-weight: 800;
+    letter-spacing: -3px;
+    line-height: 1;
+    background: linear-gradient(135deg, #34d399, #059669);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .streak-label {
+    font-size: 14px;
+    color: #666;
+    margin-top: 8px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 20px;
+    border: none;
+    border-radius: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+
+  .btn:active { transform: scale(0.95); opacity: 0.8; }
+
+  .btn-nospend {
+    background: #059669;
+    color: #fff;
+  }
+
+  .btn-spent {
+    background: #dc2626;
+    color: #fff;
+  }
+
+  .log {
+    margin-top: 48px;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .log h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #888;
+  }
+
+  .log-entry {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #1a1a1a;
+    font-size: 15px;
+  }
+
+  .log-entry .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 10px;
+  }
+
+  .dot.green { background: #059669; }
+  .dot.red { background: #dc2626; }
+
+  .export-btn {
+    margin-top: 32px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #888;
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #222;
+    color: #f5f5f5;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    transition: transform 0.3s ease;
+    z-index: 100;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<h1>No Spend</h1>
+<p class="subtitle">Track your no-spend days</p>
+
+<div class="date-picker">
+  <label>Date to log</label>
+  <input type="date" id="dateInput">
+</div>
+
+<div class="status-badge none" id="statusBadge">No entry yet</div>
+
+<div class="streak-display">
+  <div class="streak-number" id="streakNumber">0</div>
+  <div class="streak-label">Day Streak</div>
+</div>
+
+<div class="buttons">
+  <button class="btn btn-nospend" onclick="logDay(false)">No Spend</button>
+  <button class="btn btn-spent" onclick="logDay(true)">Spent $</button>
+</div>
+
+<div class="log" id="logSection">
+  <h2>Recent entries</h2>
+  <div id="logEntries"></div>
+</div>
+
+<button class="export-btn" onclick="exportCSV()">Export CSV</button>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // --- Data layer (localStorage) ---
+  function getData() {
+    try {
+      return JSON.parse(localStorage.getItem('nospend_data')) || {};
+    } catch { return {}; }
+  }
+
+  function saveData(data) {
+    localStorage.setItem('nospend_data', JSON.stringify(data));
+  }
+
+  // --- Date helpers ---
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
+  }
+
+  function formatDate(dateStr) {
+    const [y, m, d] = dateStr.split('-');
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return months[parseInt(m) - 1] + ' ' + parseInt(d) + ', ' + y;
+  }
+
+  // --- Init date picker ---
+  const dateInput = document.getElementById('dateInput');
+  dateInput.value = todayStr();
+  dateInput.max = todayStr();
+  dateInput.addEventListener('change', updateUI);
+
+  // --- Core actions ---
+  function logDay(spent) {
+    const date = dateInput.value;
+    if (!date) return;
+    const data = getData();
+    data[date] = { spent: spent, logged: new Date().toISOString() };
+    saveData(data);
+    showToast(spent ? 'Logged: Spent on ' + formatDate(date) : 'Logged: No spend on ' + formatDate(date));
+    updateUI();
+  }
+
+  // --- Streak calculation ---
+  function calcStreak() {
+    const data = getData();
+    let streak = 0;
+    const d = new Date();
+    // Start from today, walk backwards
+    while (true) {
+      const key = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+      if (data[key] && data[key].spent === false) {
+        streak++;
+        d.setDate(d.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  }
+
+  // --- UI updates ---
+  function updateUI() {
+    const data = getData();
+    const selectedDate = dateInput.value;
+    const badge = document.getElementById('statusBadge');
+
+    // Update badge for selected date
+    if (data[selectedDate]) {
+      if (data[selectedDate].spent) {
+        badge.textContent = 'Spent on ' + formatDate(selectedDate);
+        badge.className = 'status-badge spent';
+      } else {
+        badge.textContent = 'No spend on ' + formatDate(selectedDate);
+        badge.className = 'status-badge no-spend';
+      }
+    } else {
+      badge.textContent = 'No entry for ' + formatDate(selectedDate);
+      badge.className = 'status-badge none';
+    }
+
+    // Update streak
+    document.getElementById('streakNumber').textContent = calcStreak();
+
+    // Update log (last 10 entries)
+    const entries = Object.keys(data).sort().reverse().slice(0, 10);
+    const logEl = document.getElementById('logEntries');
+    logEl.innerHTML = entries.map(date => {
+      const e = data[date];
+      const dotClass = e.spent ? 'red' : 'green';
+      const label = e.spent ? 'Spent' : 'No Spend';
+      return '<div class="log-entry"><span><span class="dot ' + dotClass + '"></span>' + formatDate(date) + '</span><span>' + label + '</span></div>';
+    }).join('');
+  }
+
+  // --- Export ---
+  function exportCSV() {
+    const data = getData();
+    const keys = Object.keys(data).sort();
+    if (keys.length === 0) { showToast('No data to export'); return; }
+    let csv = 'date,spent,logged_at\n';
+    keys.forEach(k => {
+      csv += k + ',' + (data[k].spent ? 'yes' : 'no') + ',' + data[k].logged + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nospend_data.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported');
+  }
+
+  // --- Toast ---
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  // --- Init ---
+  updateUI();
+</script>
+
+</body>
+</html>
