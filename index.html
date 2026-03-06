@@ -157,17 +157,30 @@
   .dot.green { background: #059669; }
   .dot.red { background: #dc2626; }
 
-  .export-btn {
+  .data-actions {
     margin-top: 32px;
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .action-btn {
+    flex: 1;
     background: #1a1a1a;
     border: 1px solid #333;
     color: #888;
-    padding: 12px 20px;
+    padding: 12px 16px;
     border-radius: 10px;
     font-size: 14px;
     font-family: inherit;
     cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
   }
+
+  .action-btn:active { transform: scale(0.95); opacity: 0.8; }
+
+  .hidden-input { display: none; }
 
   .toast {
     position: fixed;
@@ -181,9 +194,65 @@
     font-size: 14px;
     transition: transform 0.3s ease;
     z-index: 100;
+    max-width: 300px;
+    text-align: center;
   }
 
   .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Confirm modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 300px;
+    width: 90%;
+    text-align: center;
+  }
+
+  .modal h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+
+  .modal p {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .modal-buttons {
+    display: flex;
+    gap: 12px;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .modal-btn.cancel { background: #333; color: #888; }
+  .modal-btn.confirm { background: #059669; color: #fff; }
 </style>
 </head>
 <body>
@@ -213,7 +282,24 @@
   <div id="logEntries"></div>
 </div>
 
-<button class="export-btn" onclick="exportCSV()">Export CSV</button>
+<div class="data-actions">
+  <button class="action-btn" onclick="exportCSV()">Export CSV</button>
+  <button class="action-btn" onclick="document.getElementById('csvFileInput').click()">Import CSV</button>
+</div>
+
+<input type="file" id="csvFileInput" class="hidden-input" accept=".csv" onchange="handleImportFile(event)">
+
+<!-- Confirm import modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <h3>Import CSV</h3>
+    <p id="importModalText">This will merge entries from the CSV with your existing data. Dates in the CSV will overwrite existing entries for the same date.</p>
+    <div class="modal-buttons">
+      <button class="modal-btn cancel" onclick="cancelImport()">Cancel</button>
+      <button class="modal-btn confirm" onclick="confirmImport()">Import</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -265,7 +351,6 @@
     const data = getData();
     let streak = 0;
     const d = new Date();
-    // Start from today, walk backwards
     while (true) {
       const key = d.getFullYear() + '-' +
         String(d.getMonth() + 1).padStart(2, '0') + '-' +
@@ -286,7 +371,6 @@
     const selectedDate = dateInput.value;
     const badge = document.getElementById('statusBadge');
 
-    // Update badge for selected date
     if (data[selectedDate]) {
       if (data[selectedDate].spent) {
         badge.textContent = 'Spent on ' + formatDate(selectedDate);
@@ -300,10 +384,8 @@
       badge.className = 'status-badge none';
     }
 
-    // Update streak
     document.getElementById('streakNumber').textContent = calcStreak();
 
-    // Update log (last 10 entries)
     const entries = Object.keys(data).sort().reverse().slice(0, 10);
     const logEl = document.getElementById('logEntries');
     logEl.innerHTML = entries.map(date => {
@@ -314,7 +396,7 @@
     }).join('');
   }
 
-  // --- Export ---
+  // --- Export CSV ---
   function exportCSV() {
     const data = getData();
     const keys = Object.keys(data).sort();
@@ -333,12 +415,84 @@
     showToast('CSV exported');
   }
 
+  // --- Import CSV ---
+  let pendingImportData = null;
+
+  function handleImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const lines = text.trim().split('\n');
+
+      // Skip header row
+      const dataLines = lines.slice(1);
+      let parsed = {};
+      let errorCount = 0;
+
+      dataLines.forEach(line => {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          const date = parts[0].trim();
+          const spentRaw = parts[1].trim().toLowerCase();
+          // Validate date format (YYYY-MM-DD)
+          if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            const spent = (spentRaw === 'yes' || spentRaw === 'true' || spentRaw === '1');
+            const loggedAt = parts[2] ? parts[2].trim() : new Date().toISOString();
+            parsed[date] = { spent: spent, logged: loggedAt };
+          } else {
+            errorCount++;
+          }
+        }
+      });
+
+      const entryCount = Object.keys(parsed).length;
+      if (entryCount === 0) {
+        showToast('No valid entries found in CSV');
+        event.target.value = '';
+        return;
+      }
+
+      pendingImportData = parsed;
+      const modalText = document.getElementById('importModalText');
+      modalText.textContent = 'Found ' + entryCount + ' entries in the CSV.' +
+        (errorCount > 0 ? ' (' + errorCount + ' rows skipped due to errors.) ' : ' ') +
+        'This will merge with your existing data. Matching dates will be overwritten.';
+      document.getElementById('importModal').classList.add('show');
+    };
+    reader.readAsText(file);
+  }
+
+  function confirmImport() {
+    if (!pendingImportData) return;
+    const data = getData();
+    // Merge: CSV entries overwrite existing for same date
+    Object.keys(pendingImportData).forEach(date => {
+      data[date] = pendingImportData[date];
+    });
+    saveData(data);
+    const count = Object.keys(pendingImportData).length;
+    pendingImportData = null;
+    document.getElementById('importModal').classList.remove('show');
+    document.getElementById('csvFileInput').value = '';
+    showToast('Imported ' + count + ' entries');
+    updateUI();
+  }
+
+  function cancelImport() {
+    pendingImportData = null;
+    document.getElementById('importModal').classList.remove('show');
+    document.getElementById('csvFileInput').value = '';
+  }
+
   // --- Toast ---
   function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2000);
+    setTimeout(() => t.classList.remove('show'), 2500);
   }
 
   // --- Init ---
